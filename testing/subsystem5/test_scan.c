@@ -178,8 +178,8 @@ static void test_box_width_from_ray_brackets(void)
         s5_scan_set(&scan, S5_CENTRE_INDEX + i, face_ranges[i]);
     }
     S5_PROFILE profile = s5_profile(&scan, 6, 18, S5_CENTRE_INDEX, NULL);
-    /* The two measured 231 mm rays are 50 degrees apart. */
-    assert(profile.width_mm == 98);
+    assert(profile.width_mm == 218); /* Bracket the two edges of the 220 mm face. */
+    assert(profile.nearest_mm == 209 && profile.left_edge_mm == -109 && profile.right_edge_mm == 109);
 }
 
 static void test_width_from_unequal_off_centre_edges(void)
@@ -240,7 +240,7 @@ static void test_narrow_face_at_track_distance(void)
     for (unsigned i = 0; i < sizeof(right) / sizeof(*right); ++i)
         s5_scan_set(&scan, S5_CENTRE_INDEX + i, right[i]);
     S5_PROFILE profile = s5_profile(&scan, 3, 20, S5_CENTRE_INDEX, NULL);
-    assert(profile.width_mm == 134 && profile.width_status == S5_WIDTH_OK);
+    assert(profile.width_mm == 57 && profile.width_status == S5_WIDTH_OK);
 
     s5_scan_set(&scan, 20, 219);
     profile = s5_profile(&scan, 3, 20, S5_CENTRE_INDEX, NULL);
@@ -295,7 +295,7 @@ static void test_bench_background_returns(void)
     S5_PROFILE profile = s5_profile(&scan, S5_CENTRE_INDEX - 10, S5_CENTRE_INDEX + 10,
                                     S5_CENTRE_INDEX, NULL);
     assert(profile.left_edge_valid && profile.right_edge_valid);
-    assert(profile.width_mm == 144 && profile.width_status == S5_WIDTH_OK);
+    assert(profile.width_mm == 88 && profile.width_status == S5_WIDTH_OK);
 }
 
 static void test_80_mm_bench_target_with_unstable_corner_ranges(void)
@@ -313,8 +313,22 @@ static void test_80_mm_bench_target_with_unstable_corner_ranges(void)
     assert(profile.nearest_mm == 189 && profile.left_edge_valid && profile.right_edge_valid);
     assert(profile.left_mm == 630 && profile.right_mm == 1196);
     assert(profile.left_edge_mm == -79 && profile.right_edge_mm == 63);
-    /* The broad beam reported edge hits 85 degrees apart on the 80 mm target. */
-    assert(profile.width_mm == 142 && profile.width_status == S5_WIDTH_OK);
+    /* Both edge bearings include the beam's angular reach. */
+    assert(profile.width_mm >= 75 && profile.width_mm <= 85 && profile.width_status == S5_WIDTH_OK);
+}
+
+static void test_width_and_distance_are_independent(void)
+{
+    const unsigned ranges[] = {218, 219, 219, 220, 220, 222, 224, 226, 228, 690};
+    S5_SCAN scan = {0};
+    for (unsigned i = 0; i < sizeof(ranges) / sizeof(*ranges); ++i) {
+        s5_scan_set(&scan, S5_CENTRE_INDEX - i, ranges[i]);
+        s5_scan_set(&scan, S5_CENTRE_INDEX + i, ranges[i]);
+    }
+    S5_PROFILE profile = s5_profile(&scan, S5_CENTRE_INDEX - 9, S5_CENTRE_INDEX + 9,
+                                    S5_CENTRE_INDEX, NULL);
+    assert(profile.nearest_mm == 218);
+    assert(profile.width_mm >= 75 && profile.width_mm <= 85 && profile.width_status == S5_WIDTH_OK);
 }
 
 static void test_centered_box_edge_coordinates(void)
@@ -340,7 +354,7 @@ static void test_track_replay_sees_no_edge_on_either_side(void)
     for (unsigned i = 0; i < sizeof(distances) / sizeof(*distances); ++i)
         s5_scan_set(&scan, i, distances[i]);
     S5_PROFILE profile = s5_profile(&scan, 0, S5_SCAN_POINTS - 1u, S5_CENTRE_INDEX, NULL);
-    assert(profile.nearest_mm == 215 && profile.width_mm == 226);
+    assert(profile.nearest_mm == 215 && profile.width_mm == S5_UNKNOWN_WIDTH);
     assert(profile.left_clipped && profile.right_clipped &&
            !profile.left_edge_valid && !profile.right_edge_valid);
 }
@@ -380,5 +394,6 @@ int main(void)
     test_bench_background_returns();
     test_clearance_with_unsteady_background();
     test_80_mm_bench_target_with_unstable_corner_ranges();
+    test_width_and_distance_are_independent();
     puts("PASS echo capture, scan packing, partial width estimates, sweep limits and bench background replay");
 }

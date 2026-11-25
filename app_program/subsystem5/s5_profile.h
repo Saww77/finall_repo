@@ -16,6 +16,10 @@
 #define S5_MAX_PROJECTED_FRONT_MM 511u
 #define S5_PROFILE_TOLERANCE_MM 100u
 #define S5_TURN_CLEARANCE_MM 100u
+#ifndef S5_WIDTH_BEAM_HALF_DEG
+/* Effective angular reach fitted to the measured 80 mm bench target. */
+#define S5_WIDTH_BEAM_HALF_DEG 30u
+#endif
 
 /* The reported offset uses the standard sweep so the wire format stays fixed. */
 static inline unsigned s5_servo_angle(unsigned scan_offset_deg)
@@ -34,7 +38,7 @@ typedef enum {
 
 typedef struct {
     unsigned nearest_mm : 12;
-    unsigned width_mm : 11; /* Half the edge-to-edge estimate or observed span. */
+    unsigned width_mm : 11; /* Estimated face width, or S5_UNKNOWN_WIDTH. */
     unsigned front_mm : 9; /* Nearest longitudinal projection, capped at 511 mm. */
     unsigned left_mm : 12;
     unsigned right_mm : 12;

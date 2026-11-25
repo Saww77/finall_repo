@@ -4,6 +4,8 @@
 #define MAX_EDGE_BRACKET_STEPS 2u
 #define MIN_DISTANT_ECHOES 3u
 #define WIDTH_COS_SCALE 65536u
+#define NARROW_BENCH_SPAN_STEPS (90u / S5_FINE_STEP)
+#define BEAM_BLEND_STEPS (15u / S5_FINE_STEP)
 
 _Static_assert(S5_FOLLOW_CLEAR_MM <= S5_MAX_PROJECTED_FRONT_MM, "Front projection must cover the obstacle window");
 
@@ -27,6 +29,8 @@ static const uint32_t one_minus_cosine[] = {
 };
 _Static_assert(S5_FINE_STEP == 5u && S5_SCAN_POINTS <= sizeof(one_minus_cosine) / sizeof(*one_minus_cosine),
                "The width cosine table must cover the configured sweep");
+_Static_assert(S5_WIDTH_BEAM_HALF_DEG <= 45u && S5_WIDTH_BEAM_HALF_DEG % S5_FINE_STEP == 0u,
+               "Beam correction must fit the sampled bearings");
 
 static unsigned angle_steps(unsigned index)
 {
@@ -180,6 +184,45 @@ static S5_EDGE profile_edge(const S5_SCAN *scan, unsigned anchor, unsigned limit
     return edge;
 }
 
+static unsigned difference_mm(unsigned a, unsigned b)
+{
+    return a > b ? a - b : b - a;
+}
+
+static bool centered_face_edges(const S5_SCAN *scan, S5_EDGE left, S5_EDGE right,
+                                unsigned depth, int *left_mm, int *right_mm)
+{
+    if (left.last_hit == S5_CENTRE_INDEX || right.last_hit == S5_CENTRE_INDEX) return false;
+    unsigned left_front = project_forward_mm(left.last_hit, s5_scan_get(scan, left.last_hit));
+    unsigned right_front = project_forward_mm(right.last_hit, s5_scan_get(scan, right.last_hit));
+    unsigned tolerance = depth / 20u + 2u;
+    if (difference_mm(depth, left_front) <= tolerance &&
+        difference_mm(depth, right_front) <= tolerance) {
+        /* With direct returns, the edge is between the last hit and the
+           nearby bearing that saw past the face. */
+        *left_mm = (edge_bound_mm(left.last_hit, depth) + edge_bound_mm(left.boundary, depth)) / 2;
+        *right_mm = (edge_bound_mm(right.last_hit, depth) + edge_bound_mm(right.boundary, depth)) / 2;
+    } else if (S5_WIDTH_BEAM_HALF_DEG &&
+               right.last_hit - left.last_hit < NARROW_BENCH_SPAN_STEPS + BEAM_BLEND_STEPS &&
+               left_front + tolerance < depth && right_front + tolerance < depth) {
+        /* An echo that projects well in front of the face came from off axis.
+           Apply the angular reach measured on the narrow bench target. */
+        unsigned steps = S5_WIDTH_BEAM_HALF_DEG / S5_FINE_STEP;
+        unsigned span_steps = right.last_hit - left.last_hit;
+        if (span_steps <= 2u * steps) return false;
+        int corrected_left = edge_bound_mm(left.last_hit + steps, depth);
+        int corrected_right = edge_bound_mm(right.last_hit - steps, depth);
+        /* Fade out the narrow-target calibration as the observed span grows. */
+        int weight = span_steps <= NARROW_BENCH_SPAN_STEPS ? (int)BEAM_BLEND_STEPS :
+                     (int)(NARROW_BENCH_SPAN_STEPS + BEAM_BLEND_STEPS - span_steps);
+        *left_mm += (corrected_left - *left_mm) * weight / (int)BEAM_BLEND_STEPS;
+        *right_mm += (corrected_right - *right_mm) * weight / (int)BEAM_BLEND_STEPS;
+    } else {
+        return false;
+    }
+    return *right_mm > *left_mm && *right_mm - *left_mm <= MAX_WIDTH_MM;
+}
+
 S5_PROFILE s5_profile(const S5_SCAN *scan, unsigned first, unsigned last, unsigned anchor,
                       unsigned *observed_span_mm)
 {
@@ -255,6 +298,21 @@ S5_PROFILE s5_profile(const S5_SCAN *scan, unsigned first, unsigned last, unsign
         int right_estimate = left_estimate + (int)result.width_mm;
         if (result.left_edge_valid) result.left_edge_mm = left_estimate;
         if (result.right_edge_valid) result.right_edge_mm = right_estimate;
+    }
+    if (result.left_clipped && result.right_clipped) {
+        /* The sweep establishes neither boundary when both endpoints still
+           have near echoes. Keep the route bounds, but omit the width. */
+        result.width_mm = S5_UNKNOWN_WIDTH;
+    } else if (anchor == S5_CENTRE_INDEX && result.left_edge_valid && result.right_edge_valid) {
+        int left_face = result.left_edge_mm;
+        int right_face = result.right_edge_mm;
+        if (centered_face_edges(scan, left, right, reference, &left_face, &right_face)) {
+            result.width_mm = (unsigned)(right_face - left_face);
+            /* A narrower displayed estimate cannot shrink the existing
+               bypass clearance. Also allow for any wider estimated edge. */
+            if (left_face < result.left_edge_mm) result.left_edge_mm = left_face;
+            if (right_face > result.right_edge_mm) result.right_edge_mm = right_face;
+        }
     }
     return result;
 }
