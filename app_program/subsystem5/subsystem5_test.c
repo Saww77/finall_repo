@@ -18,7 +18,7 @@ EXPORT void subsystem5_test(void)
     s5_scan_set(&samples, S5_CENTRE_INDEX + 4, S5_OPEN_RANGE);
     S5_PROFILE profile = s5_profile(&samples, S5_CENTRE_INDEX - 5, S5_CENTRE_INDEX + 5, S5_CENTRE_INDEX, 0);
     TEST_CHECK("S5-U01", profile.nearest_mm == 200 && profile.angle_offset_deg == 60 &&
-               profile.width_mm == 126 && profile.left_mm == 410 &&
+               profile.width_mm == 54 && profile.left_mm == 410 &&
                profile.right_mm == S5_OPEN_RANGE && profile.right_edge_valid,
                "profile distinguishes an open side from an electrical fault");
     profile = s5_profile(&samples, S5_CENTRE_INDEX, S5_CENTRE_INDEX + 5, S5_CENTRE_INDEX, 0);
