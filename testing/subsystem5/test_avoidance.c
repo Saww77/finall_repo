@@ -556,6 +556,35 @@ static void test_no_route_with_unconfirmed_clearance(void)
     assert(s5_plan_bypass(&scan).side == S5_NO_SIDE);
 }
 
+static void test_outward_clearance(void)
+{
+    S5_PROFILE scan = obstacle(false);
+    scan.left_edge_mm = -100;
+    scan.right_edge_mm = 100;
+    scan.left_path_mm = 140;
+    scan.right_path_mm = 360;
+    scan.right_outward_mm = S5_UNKNOWN_RANGE;
+
+    S5_BYPASS plan = s5_plan_bypass(&scan);
+    assert(plan.side == S5_NO_SIDE && plan.failure == S5_FAIL_SIDE);
+    assert(!plan.probe_left && plan.probe_right);
+    scan.right_outward_mm = 381; /* 60-degree projection falls short of 330 mm lateral room. */
+    plan = s5_plan_bypass(&scan);
+    assert(plan.side == S5_NO_SIDE && !plan.probe_right);
+    scan.right_outward_mm = 382;
+    plan = s5_plan_bypass(&scan);
+    assert(plan.side == S5_RIGHT && plan.offset_mm == 235);
+
+    scan.right_outward_mm = S5_OPEN_RANGE;
+    scan.right_path_mm = S5_UNKNOWN_RANGE;
+    assert(s5_plan_bypass(&scan).side == S5_RIGHT);
+    scan.right_path_mm = 300; /* Shorter than the departure leg's required clearance. */
+    assert(s5_plan_bypass(&scan).side == S5_NO_SIDE);
+    scan.right_clipped = true;
+    scan.right_path_mm = S5_UNKNOWN_RANGE;
+    assert(s5_plan_bypass(&scan).side == S5_NO_SIDE);
+}
+
 static void test_lateral_bypass_at_start(void)
 {
     /* Reproduce the sweep with short 45-degree readings and usable space at R. */
@@ -591,8 +620,8 @@ static void test_lateral_bypass_at_start(void)
     end_move(&clear, &roomy, &out);
     start_move(&clear, &roomy, &out, S5_ARC_LEFT, 0);
     end_move(&clear, &roomy, &out);
-    assert(clear.avoidance.pass_mm == 200);
-    start_move(&clear, &roomy, &out, S5_ADVANCE, 200);
+    assert(clear.avoidance.pass_mm == 163);
+    start_move(&clear, &roomy, &out, S5_ADVANCE, 163);
     end_move(&clear, &roomy, &out);
     assert(clear.avoidance.phase == S5_TURN_IN);
 
@@ -795,6 +824,11 @@ static void test_rounded_bypass(bool left)
     scan.width_mm = 200;
     scan.left_edge_mm = -100;
     scan.right_edge_mm = 100;
+    if (!left) {
+        scan.left_path_mm = 140;
+        scan.right_path_mm = 360;
+        scan.right_outward_mm = 390;
+    }
     S5_BYPASS plan = s5_plan_bypass(&scan);
     assert(plan.offset_mm == 100 + S5_SIDE_ALLOWANCE_MM);
     profile(&model, &in, &out, scan);
@@ -809,8 +843,8 @@ static void test_rounded_bypass(bool left)
     end_move(&model, &in, &out);
     start_move(&model, &in, &out, inward, 0);
     end_move(&model, &in, &out);
-    assert(model.avoidance.offset_mm == plan.offset_mm && model.avoidance.pass_mm == 520 - 252);
-    start_move(&model, &in, &out, S5_ADVANCE, 520 - 252);
+    assert(model.avoidance.offset_mm == plan.offset_mm && model.avoidance.pass_mm == 490 - 252);
+    start_move(&model, &in, &out, S5_ADVANCE, 490 - 252);
     assert(model.avoidance.phase == S5_PASS);
     end_move(&model, &in, &out);
     assert(model.avoidance.phase == S5_TURN_IN);
@@ -880,20 +914,20 @@ static void test_plan_pass_distance(void)
     S5_PROFILE scan = obstacle(false);
     scan.nearest_mm = 220;
     scan.width_mm = 200;
-    assert(s5_planned_pass_mm(&scan, 230) == 510);
-    assert(s5_planned_pass_mm(&scan, 190) == 500);
+    assert(s5_planned_pass_mm(&scan, 230) == 480);
+    assert(s5_planned_pass_mm(&scan, 190) == 470);
     scan.width_status = S5_WIDTH_RIGHT_EDGE;
-    assert(s5_planned_pass_mm(&scan, 230) == 535);
+    assert(s5_planned_pass_mm(&scan, 230) == 505);
     scan.width_mm = 280;
-    assert(s5_planned_pass_mm(&scan, 230) == 583);
+    assert(s5_planned_pass_mm(&scan, 230) == 541);
     scan.width_mm = S5_UNKNOWN_WIDTH;
-    assert(s5_planned_pass_mm(&scan, 230) == 530);
+    assert(s5_planned_pass_mm(&scan, 230) == 500);
 
     VC_MODEL model = {0};
     VC_INPUT in = track_input();
     VC_OUTPUT out;
     scan = obstacle(false);
-    scan.width_mm = 535;
+    scan.width_mm = 720;
     profile(&model, &in, &out, scan);
     assert(model.avoidance.phase == S5_WAIT_PATH && model.avoidance.failure == S5_FAIL_ROOM);
     assert(out.maneuver.action == S5_WAIT);
@@ -916,7 +950,7 @@ static void test_compact_offset_still_rolls(void)
     end_move(&model, &in, &out);
     start_move(&model, &in, &out, S5_ARC_LEFT, 0);
     end_move(&model, &in, &out);
-    start_move(&model, &in, &out, S5_ADVANCE, 454 - 225);
+    start_move(&model, &in, &out, S5_ADVANCE, 441 - 225);
     end_move(&model, &in, &out);
     assert(model.avoidance.phase == S5_TURN_IN);
     start_move(&model, &in, &out, S5_ARC_LEFT, 0);
@@ -942,6 +976,7 @@ int main(void)
     test_centered_and_offset_boxes();
     test_bypass_with_estimated_edges();
     test_no_route_with_unconfirmed_clearance();
+    test_outward_clearance();
     test_lateral_bypass_at_start();
     test_stationary_retry();
     test_clipped_scan(false);
