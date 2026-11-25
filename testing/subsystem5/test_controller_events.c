@@ -545,7 +545,8 @@ int main(void)
     work();
     assert(vehicle_obstacle_scan_request(&request, NULL));
 
-    S5_PROFILE unresolved = {.nearest_mm = 208, .front_mm = 203, .width_mm = S5_UNKNOWN_WIDTH,
+    S5_PROFILE unresolved = {.nearest_mm = 208, .front_mm = 203, .width_mm = 173,
+                             .width_status = S5_WIDTH_BOTH_EDGES,
                              .angle_offset_deg = 60, .left_mm = S5_UNKNOWN_RANGE, .right_mm = S5_UNKNOWN_RANGE,
                              .left_path_mm = 80, .right_path_mm = S5_UNKNOWN_RANGE};
     uint32_t first_request = request;

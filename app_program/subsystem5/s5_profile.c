@@ -103,6 +103,22 @@ bool s5_background_beyond(unsigned range, unsigned reference)
            (s5_range_measured(range) && range > reference + S5_PROFILE_TOLERANCE_MM);
 }
 
+bool s5_scan_reuse_background(S5_SCAN *scan, unsigned index, unsigned limit,
+                              unsigned range, unsigned reference)
+{
+    /* Only fill a missing fine-scan bearing. Conflicting near echoes keep
+       the edge bracket incomplete. */
+    if (s5_range_available(s5_scan_get(scan, index)) || !s5_background_beyond(range, reference))
+        return false;
+    int step = index < limit ? 1 : -1;
+    for (int i = (int)index; i != (int)limit;) {
+        i += step;
+        if (s5_same_obstacle(s5_scan_get(scan, (unsigned)i), reference)) return false;
+    }
+    s5_scan_set(scan, index, range);
+    return true;
+}
+
 unsigned s5_edge_background(const unsigned *ranges, unsigned count, unsigned reference)
 {
     unsigned shortest = S5_UNKNOWN_RANGE;

@@ -56,6 +56,12 @@ typedef struct {
     unsigned right_edge_valid : 1;
 } S5_PROFILE;
 
+static inline unsigned s5_reported_width(const S5_PROFILE *profile)
+{
+    return profile->width_status == S5_WIDTH_OK && profile->left_edge_valid && profile->right_edge_valid ?
+           profile->width_mm : S5_UNKNOWN_WIDTH;
+}
+
 /* Index zero is the configured left endpoint, decreasing 5 degrees per sample. */
 typedef struct {
     uint8_t bytes[(S5_SCAN_POINTS * 12u + 7u) / 8u];
@@ -63,6 +69,8 @@ typedef struct {
 
 void s5_scan_set(S5_SCAN *scan, unsigned index, unsigned range);
 unsigned s5_scan_get(const S5_SCAN *scan, unsigned index);
+bool s5_scan_reuse_background(S5_SCAN *scan, unsigned index, unsigned limit,
+                              unsigned range, unsigned reference);
 unsigned s5_scan_target(const S5_SCAN *scan, unsigned limit_mm);
 bool s5_same_obstacle(unsigned range, unsigned reference);
 bool s5_background_beyond(unsigned range, unsigned reference);

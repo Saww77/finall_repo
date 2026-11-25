@@ -70,7 +70,7 @@ Place a flat box about 200 mm ahead. Confirm the forward echo, five coarse beari
 
 Repeat with empty sides and with stationary objects beside the box. At an unresolved 45° side bearing, the final two pings wait 200 ms between attempts and allow up to 100 ms to capture a complete echo. If neither side qualifies, a candidate side can get a 60° check while the car is stopped. A confirmed open result or a finite echo beyond the projected chassis clearance can qualify the route. Check the `outward clearance` USB log and verify that a near return blocking the departure or an unavailable return alone keeps the car from committing. Verify a right turn when both routes are comparable and a left turn when only the left side fits.
 
-Check width across the face of a centred box and forward distance to that face separately. The 80 mm bench sweep at about 190 mm replays as an 85 mm width. The narrow-target calibration compensates for wide-angle returns and uses the recorded edge bearings. If both sweep endpoints still see the obstacle, width is unavailable until a scan resolves the edges.
+Check width across the face of a centred box and forward distance to that face separately. The 80 mm bench sweep at about 190 mm replays as an 85 mm width. The narrow-target calibration compensates for wide-angle returns and uses the recorded edge bearings. A confirmed background return from a side clearance check can fill a missing bearing. Width is unavailable on USB serial and the dashboard until both edges are resolved.
 
 ### Track acceptance
 

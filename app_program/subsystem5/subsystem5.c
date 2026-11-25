@@ -157,6 +157,27 @@ static unsigned read_outward(const S5_SCAN *samples, unsigned index, BOOL verbos
     return range && s5_range_available(range) ? range : read_at(index, verbose, SCAN_FINE, S5_UNKNOWN_RANGE);
 }
 
+static void refine_profile(S5_PROFILE *profile, const S5_SCAN *samples,
+                           unsigned first, unsigned last, unsigned anchor)
+{
+    S5_PROFILE refined = s5_profile(samples, first, last, anchor, NULL);
+    if (s5_reported_width(&refined) == S5_UNKNOWN_WIDTH) return;
+
+    /* Keep the original sweep's clearance bound, including uncertainty on
+       a previously unconfirmed side. */
+    int left_bound = profile->left_edge_mm;
+    int right_bound = profile->right_edge_mm;
+    if (!profile->left_edge_valid)
+        left_bound = (left_bound < 0 ? left_bound : 0) - (int)S5_UNCERTAIN_EDGE_MM;
+    if (!profile->right_edge_valid)
+        right_bound = (right_bound > 0 ? right_bound : 0) + (int)S5_UNCERTAIN_EDGE_MM;
+    if (refined.left_edge_mm > left_bound) refined.left_edge_mm = left_bound;
+    if (refined.right_edge_mm < right_bound) refined.right_edge_mm = right_bound;
+    refined.left_path_mm = profile->left_path_mm;
+    refined.right_path_mm = profile->right_path_mm;
+    *profile = refined;
+}
+
 static BOOL scan_obstacle(S5_PROFILE *profile, BOOL verbose, const uint32_t *request, unsigned limit_mm)
 {
     const char *tag = verbose ? "[S5 BENCH]" : "[S5]";
@@ -212,12 +233,19 @@ static BOOL scan_obstacle(S5_PROFILE *profile, BOOL verbose, const uint32_t *req
     if (request && !vehicle_obstacle_scan_current(*request)) goto cancelled;
 
     *profile = s5_profile(&samples, first, last, anchor, NULL);
-    profile->left_path_mm = read_at(S5_CENTRE_INDEX - BYPASS_SCAN_STEPS, verbose,
-                                    SCAN_CLEARANCE, S5_UNKNOWN_RANGE);
+    unsigned left_bearing = S5_CENTRE_INDEX - BYPASS_SCAN_STEPS;
+    unsigned right_bearing = S5_CENTRE_INDEX + BYPASS_SCAN_STEPS;
+    profile->left_path_mm = read_at(left_bearing, verbose, SCAN_CLEARANCE, S5_UNKNOWN_RANGE);
     if (request && !vehicle_obstacle_scan_current(*request)) goto cancelled;
-    profile->right_path_mm = read_at(S5_CENTRE_INDEX + BYPASS_SCAN_STEPS, verbose,
-                                     SCAN_CLEARANCE, S5_UNKNOWN_RANGE);
+    profile->right_path_mm = read_at(right_bearing, verbose, SCAN_CLEARANCE, S5_UNKNOWN_RANGE);
     if (request && !vehicle_obstacle_scan_current(*request)) goto cancelled;
+    if (s5_reported_width(profile) == S5_UNKNOWN_WIDTH) {
+        bool left_added = left_bearing >= first && left_bearing < anchor &&
+                          s5_scan_reuse_background(&samples, left_bearing, first, profile->left_path_mm, fine);
+        bool right_added = right_bearing <= last && right_bearing > anchor &&
+                           s5_scan_reuse_background(&samples, right_bearing, last, profile->right_path_mm, fine);
+        if (left_added || right_added) refine_profile(profile, &samples, first, last, anchor);
+    }
     S5_BYPASS plan = s5_plan_bypass_at_range(profile, limit_mm);
     if (plan.probe_left) {
         profile->left_outward_mm = read_outward(&samples, S5_CENTRE_INDEX - OUTWARD_SCAN_STEPS, verbose);
@@ -239,14 +267,10 @@ static BOOL scan_obstacle(S5_PROFILE *profile, BOOL verbose, const uint32_t *req
     tm_printf((UB*)"%s edge offsets left=%d mm (%s), right=%d mm (%s)\n", tag,
               (int)profile->left_edge_mm, profile->left_edge_valid ? "estimated" : "unconfirmed",
               (int)profile->right_edge_mm, profile->right_edge_valid ? "estimated" : "unconfirmed");
-    if (profile->width_status != S5_WIDTH_OK) {
-        if (profile->width_mm == S5_UNKNOWN_WIDTH)
-            tm_printf((UB*)"%s width=unavailable (%s) nearest_distance=%u mm\n",
-                      tag, width_status[profile->width_status], (unsigned)profile->nearest_mm);
-        else
-            tm_printf((UB*)"%s estimated_width=%u mm from observed span (%s) nearest_distance=%u mm\n",
-                      tag, (unsigned)profile->width_mm, width_status[profile->width_status],
-                      (unsigned)profile->nearest_mm);
+    unsigned width = s5_reported_width(profile);
+    if (width == S5_UNKNOWN_WIDTH) {
+        tm_printf((UB*)"%s width=unavailable (%s) nearest_distance=%u mm\n",
+                  tag, width_status[profile->width_status], (unsigned)profile->nearest_mm);
         if (profile->left_clipped)
             tm_printf((UB*)"%s left sweep limit: near return %u mm at %u deg (PWM %u us)\n",
                       tag, s5_scan_get(&samples, 0), S5_SCAN_MAX_ANGLE, s5_servo_pulse_us(S5_SCAN_MAX_ANGLE));
@@ -261,7 +285,7 @@ static BOOL scan_obstacle(S5_PROFILE *profile, BOOL verbose, const uint32_t *req
         }
     } else {
         tm_printf((UB*)"%s profile nearest_distance=%u mm width=%u mm angle=%u deg\n",
-                  tag, (unsigned)profile->nearest_mm, (unsigned)profile->width_mm,
+                  tag, (unsigned)profile->nearest_mm, width,
                   s5_servo_angle(profile->angle_offset_deg));
     }
     return TRUE;

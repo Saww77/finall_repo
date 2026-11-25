@@ -451,7 +451,7 @@ void vehicle_finish_obstacle_scan(const S5_PROFILE *profile, uint32_t request)
         if (profile && s5_range_measured(profile->nearest_mm)) {
             data.obstacle_valid = data.obstacle_profile = true;
             data.near_mm = profile->nearest_mm;
-            data.width_mm = profile->width_mm;
+            data.width_mm = s5_reported_width(profile);
             data.clear_left_mm = profile->left_path_mm;
             data.clear_right_mm = profile->right_path_mm;
             data.obstacle_angle_offset = profile->angle_offset_deg;

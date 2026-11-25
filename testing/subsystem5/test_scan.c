@@ -331,6 +331,32 @@ static void test_width_and_distance_are_independent(void)
     assert(profile.width_mm >= 75 && profile.width_mm <= 85 && profile.width_status == S5_WIDTH_OK);
 }
 
+static void test_reported_width_needs_two_edges(void)
+{
+    S5_SCAN scan = {0};
+    for (unsigned i = 0; i < S5_SCAN_POINTS; ++i) s5_scan_set(&scan, i, S5_UNKNOWN_RANGE);
+    for (unsigned i = 0; i <= S5_CENTRE_INDEX + 7u; ++i) s5_scan_set(&scan, i, 222);
+    s5_scan_set(&scan, 0, 253);
+    s5_scan_set(&scan, S5_CENTRE_INDEX + 7u, 220);
+    unsigned last = S5_SCAN_POINTS - 1u;
+    unsigned right_bearing = S5_CENTRE_INDEX + 9u;
+    S5_PROFILE profile = s5_profile(&scan, 0, last, S5_CENTRE_INDEX, NULL);
+    assert(profile.left_clipped && profile.width_mm == 173 && s5_reported_width(&profile) == S5_UNKNOWN_WIDTH);
+    assert(s5_scan_reuse_background(&scan, right_bearing, last, S5_OPEN_RANGE, 222));
+    profile = s5_profile(&scan, 0, last, S5_CENTRE_INDEX, NULL);
+    assert(profile.right_edge_valid && !profile.left_edge_valid && s5_reported_width(&profile) == S5_UNKNOWN_WIDTH);
+
+    for (unsigned i = 0; i < S5_CENTRE_INDEX - 8u; ++i) s5_scan_set(&scan, i, S5_UNKNOWN_RANGE);
+    unsigned left_bearing = S5_CENTRE_INDEX - 9u;
+    /* Ignore an open reading when another outward bearing saw a target. */
+    s5_scan_set(&scan, left_bearing - 1u, 230);
+    assert(!s5_scan_reuse_background(&scan, left_bearing, 0, S5_OPEN_RANGE, 222));
+    s5_scan_set(&scan, left_bearing - 1u, S5_UNKNOWN_RANGE);
+    assert(s5_scan_reuse_background(&scan, left_bearing, 0, 700, 222));
+    profile = s5_profile(&scan, 0, last, S5_CENTRE_INDEX, NULL);
+    assert(profile.left_edge_valid && profile.right_edge_valid && s5_reported_width(&profile) == profile.width_mm);
+}
+
 static void test_centered_box_edge_coordinates(void)
 {
     S5_SCAN scan = {0};
@@ -395,5 +421,6 @@ int main(void)
     test_clearance_with_unsteady_background();
     test_80_mm_bench_target_with_unstable_corner_ranges();
     test_width_and_distance_are_independent();
+    test_reported_width_needs_two_edges();
     puts("PASS echo capture, scan packing, partial width estimates, sweep limits and bench background replay");
 }
